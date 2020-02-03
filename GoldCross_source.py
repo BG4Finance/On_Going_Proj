@@ -40,5 +40,3 @@ elif sma6 > sma4:
   print('SELL PHASE')
 else:
   print('GOLD CROSS IN COURSE')
-  
-  
