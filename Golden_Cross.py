@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from pytz import timezone
 from alpaca_keys import keyid, secretkey, baseurl
 
+#You can obtain the folowing API credential for free by visiting https://alpaca.markets/
+#You can always opt for a paer account, as I did, or get a real one in action.
 id = keyid
 key = secretkey
 url = baseurl
@@ -34,10 +36,24 @@ class alpaca_GB:
         tot_buy_pow_pc = tot_buy_pow * 100/equity
         print('Actual total buying power = {0}, {1}%'.format(tot_buy_pow, tot_buy_pow_pc))
 
+    def tradable(self, asset = 'AAPL'):
+        asset_query = self.api.get_asset(asset)
+        if asset_query.tradable:
+            print('We can trade {}.'.format(asset))
+        else:
+            print('{} Not available'.format(asset))
+
 
     def get_data(self, stock = 'TSLA', time = 'day'):
         now = (dt.datetime.now()).date().strftime(self.time_format)
-        data = self.api.get_barset(stock ,timeframe = time, limit=80, end=now)
+        data = []
+        for ass in stock:
+            ass_data = self.api.get_barset(stock ,timeframe = time, limit=80, end=now)[ass]
+            close = ass_data[-1].c
+            print(ass)
+            print(ass_data)
+            print('Close: {}'.format(close))
+            data.append(ass_data)
 
 
     def sma(self, short_obs, long_obs):
