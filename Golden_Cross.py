@@ -102,6 +102,7 @@ class alpaca_GB:
                 self.status = 'wait'
                 print('GOLD CROSS IN COURSE')
 
+    #V2 aim to be a shorter verision of sma_check
     def sma_v2 (self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
         self.get_data(stock, time, obs_limit=long_obs, show_data=False)
         sma_st = 0
