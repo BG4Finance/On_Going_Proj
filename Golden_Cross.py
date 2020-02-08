@@ -20,16 +20,19 @@ class alpaca_GB:
         self.id = user
         self.key = password
         self.api = alp.REST(key_id = self.id, secret_key = self.key, base_url = url)
-        self.portfolio = self.api.list_positions()
-        self.portfolio
         self.account = self.api.get_account()
         self.account.status
         self.time_format = time_format
+        #Useful elements to be recalled later on
+        self.portfolio = self.api.list_positions()
+        self.clock = self.api.get_clock()
+        self.orders = self.api.list_orders(status = "open")
 
     def status(self):
         today = (dt.datetime.now().strftime(self.time_format))
-        print(today)
-
+        print("Today is: {}".format(today))
+        print("Position list:")
+        print(self.portfolio)
         equity = float(self.account.equity)
         margin_multiplier = float(self.account.multiplier)
         print('Margin multiple: %s' %(margin_multiplier) + 'X')
@@ -45,37 +48,47 @@ class alpaca_GB:
             print('{} Not available'.format(asset))
 
 
-    def get_data(self, stock = 'TSLA', time = 'day', print_data = False):
+    def get_data(self, stock, time, obs_limit = 80, show_data = False):
+        if type(stock) is str:
+            stock = [stock]
         now = (dt.datetime.now()).date().strftime(self.time_format)
-        self.data = []
+        self.data = pd.DataFrame(columns=stock)
         for ass in stock:
-            ass_data = self.api.get_barset(stock ,timeframe = time, limit=80, end=now)[ass]
-            close = ass_data[-1].c
+            self.ass_data = self.api.get_barset(stock ,timeframe = time, limit = obs_limit, end=now)[ass]
+            #Extract close values!
+            initial = self.ass_data[0].c
+            close = self.ass_data[-1].c
+            price = np.array(self.ass_data[0].c)
+            for i in range(1,obs_limit):
+                price = np.vstack((price,self.ass_data[i].c))
             print(ass)
-            if print_data == True:
-                print(ass_data)
-            print('Close: {0}; Vol: {1}'.format(close, ass_data[-1].v))
-            self.data.append(ass_data)
+            if show_data == True:
+                print(price)
+            print('Close: {0}; Vol: {1}'.format(close, self.ass_data[-1].v))
+            ####### PLS FIX #######
+            #self.data[ass] = price
+
+        #print(self.data)
 
     #MIX of data plus mov avg.
     def sma_check(self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
         now = (dt.datetime.now()).date().strftime(self.time_format)
         self.data = []
         for ass in stock:
-            ass_data = self.api.get_barset(stock ,timeframe = time, limit=long_obs+2, end=now)[ass]
-            close = ass_data[-1].c
+            self.ass_data = self.api.get_barset(stock ,timeframe = time, limit=long_obs+2, end=now)[ass]
+            close = self.ass_data[-1].c
             print(ass)
-            print('Close: {0}; Vol: {1}'.format(close, ass_data[-1].v))
-            self.data.append(ass_data)
+            print('Close: {0}; Vol: {1}'.format(close, self.ass_data[-1].v))
+            self.data.append(self.ass_data)
             #Mov avg calculation and evaluation for strategy
             sma_st = 0
             sma_lt = 0
             for i in range(1,long_obs):
-                sma_lt += ass_data[-i].c
+                sma_lt += self.ass_data[-i].c
             sma_lt=round(sma_lt/long_obs,2)
 
             for i in range(1,short_obs):
-                sma_st = (sma_st + ass_data[-i].c)
+                sma_st = (sma_st + self.ass_data[-i].c)
             sma_st=round(sma_st/short_obs,2)
 
             print('Simple moving average: {0}obs: {1}; {2}obs: {3}.'.format(long_obs, sma_lt, short_obs, sma_st))
@@ -89,10 +102,33 @@ class alpaca_GB:
                 self.status = 'wait'
                 print('GOLD CROSS IN COURSE')
 
-    def sma_trade (self):
-        pass
+    def sma_v2 (self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
+        self.get_data(stock, time, obs_limit=long_obs, show_data=False)
+        sma_st = 0
+        sma_lt = 0
+        for ass in stock:
+            print(self.data)
 
-        # Get a list of all of our positions.
+        # Get a list of all of our positions
+        for i in range(1,long_obs):
+            sma_lt += self.ass_data[-i].c
+        sma_lt=round(sma_lt/long_obs,2)
+
+        for i in range(1,short_obs):
+            sma_st = (sma_st + self.ass_data[-i].c)
+        sma_st=round(sma_st/short_obs,2)
+
+        print('Simple moving average: {0}obs: {1}; {2}obs: {3}.'.format(long_obs, sma_lt, short_obs, sma_st))
+        if sma_st > sma_lt :
+            self.status = 'buy'
+            print('BUY PHASE')
+        elif sma_lt > sma_st:
+            self.status = 'sell'
+            print('SELL PHASE')
+        else:
+            self.status = 'wait'
+            print('GOLD CROSS IN COURSE')
+
 
 # Print the quantity of shares for each position.
 #for position in portfolio:
