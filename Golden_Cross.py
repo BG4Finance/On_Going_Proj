@@ -39,12 +39,18 @@ class alpaca_GB:
         tot_buy_pow = margin_multiplier * equity
         tot_buy_pow_pc = tot_buy_pow * 100/equity
         print('Actual total buying power = {0}, {1}%'.format(tot_buy_pow, tot_buy_pow_pc))
+        print('- - - -')
+        print('')
+
 
     def tradable(self, asset = 'AAPL'):
-        asset_query = self.api.get_asset(asset)
-        if asset_query.tradable:
-            print('We can trade {}.'.format(asset))
-        else:
+        if type(asset) is str:
+            asset = [asset]
+        try:
+            asset_query = self.api.get_asset(asset)
+            if asset_query.tradable:
+                print('We can trade {}.'.format(asset))
+        except Exception as e:
             print('{} Not available'.format(asset))
 
 
@@ -52,85 +58,86 @@ class alpaca_GB:
         if type(stock) is str:
             stock = [stock]
         now = (dt.datetime.now()).date().strftime(self.time_format)
-        self.data = pd.DataFrame(columns=stock)
+        self.data = pd.DataFrame()
+        self.volume = pd.DataFrame()
+
         for ass in stock:
-            self.ass_data = self.api.get_barset(stock ,timeframe = time, limit = obs_limit, end=now)[ass]
+            ass_data = self.api.get_barset(stock ,timeframe = time, limit = obs_limit, end=now)[ass]
             #Extract close values!
-            initial = self.ass_data[0].c
-            close = self.ass_data[-1].c
-            price = np.array(self.ass_data[0].c)
+            self.initial = ass_data[0].c
+            self.close = ass_data[-1].c
+
+            price = np.array(ass_data[0].c)
             for i in range(1,obs_limit):
-                price = np.vstack((price,self.ass_data[i].c))
-            print(ass)
+                price = np.vstack((price,ass_data[i].c))
+            price = pd.DataFrame(price,columns=[ass])
+            self.data = pd.concat([self.data, price], axis=1)
+
+            vol = np.array(ass_data[0].v)
+            for i in range(1,obs_limit):
+                vol = np.vstack((vol,ass_data[i].v))
+            vol = pd.DataFrame(vol,columns=[ass])
+            self.volume = pd.concat([self.volume, vol], axis=1)
+
             if show_data == True:
-                print(price)
-            print('Close: {0}; Vol: {1}'.format(close, self.ass_data[-1].v))
-            ####### PLS FIX #######
-            #self.data[ass] = price
+                print(ass)
+                print('Close: {0}; @Vol: {1}'.format(self.close, int(self.volume[ass].tail(1))))
+                print('Change in the period: {}%'.format(round(float(self.close/self.initial-1)*100,4)))
+                print(self.data)
+                #Localize data with:
+                #self.data.loc[1,ass]
+                print('- - - -')
 
-        #print(self.data)
-
-    #MIX of data plus mov avg.
-    def sma_check(self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
-        now = (dt.datetime.now()).date().strftime(self.time_format)
-        self.data = []
-        for ass in stock:
-            self.ass_data = self.api.get_barset(stock ,timeframe = time, limit=long_obs+2, end=now)[ass]
-            close = self.ass_data[-1].c
-            print(ass)
-            print('Close: {0}; Vol: {1}'.format(close, self.ass_data[-1].v))
-            self.data.append(self.ass_data)
-            #Mov avg calculation and evaluation for strategy
-            sma_st = 0
-            sma_lt = 0
-            for i in range(1,long_obs):
-                sma_lt += self.ass_data[-i].c
-            sma_lt=round(sma_lt/long_obs,2)
-
-            for i in range(1,short_obs):
-                sma_st = (sma_st + self.ass_data[-i].c)
-            sma_st=round(sma_st/short_obs,2)
-
-            print('Simple moving average: {0}obs: {1}; {2}obs: {3}.'.format(long_obs, sma_lt, short_obs, sma_st))
-            if sma_st > sma_lt :
-                self.status = 'buy'
-                print('BUY PHASE')
-            elif sma_lt > sma_st:
-                self.status = 'sell'
-                print('SELL PHASE')
-            else:
-                self.status = 'wait'
-                print('GOLD CROSS IN COURSE')
 
     #V2 aim to be a shorter verision of sma_check
-    def sma_v2 (self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
-        self.get_data(stock, time, obs_limit=long_obs, show_data=False)
+    def sma_v2(self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
+        if type(stock) is str:
+            stock = [stock]
         sma_st = 0
         sma_lt = 0
         for ass in stock:
-            print(self.data)
+            self.get_data(ass, time, obs_limit=long_obs, show_data=False)
+            #self.data.loc[0,'TSLA'][i]
+            for i in range((len(self.data[ass])-long_obs),len(self.data[ass])):
+                sma_lt +=  self.data.loc[i,ass]
+            sma_lt=round(sma_lt/long_obs,2)
 
-        # Get a list of all of our positions
-        for i in range(1,long_obs):
-            sma_lt += self.ass_data[-i].c
-        sma_lt=round(sma_lt/long_obs,2)
+            for i in range((len(self.data[ass])-short_obs),len(self.data[ass])):
+                sma_st += self.data.loc[i,ass]
+            sma_st=round(sma_st/short_obs,2)
 
-        for i in range(1,short_obs):
-            sma_st = (sma_st + self.ass_data[-i].c)
-        sma_st=round(sma_st/short_obs,2)
+            print(ass)
+            print('Close: {0}; @Vol: {1}'.format(self.close, int(self.volume[ass].tail(1))))
+            print('Change in the period ({0} Obs): {1}%'.format(long_obs, round(float(self.close/self.initial-1)*100,4)))
+            print('Simple moving average: {0}obs: {1}; {2}obs: {3}.'.format(long_obs, sma_lt, short_obs, sma_st))
+            print('- - - - - -')
+            print('')
 
-        print('Simple moving average: {0}obs: {1}; {2}obs: {3}.'.format(long_obs, sma_lt, short_obs, sma_st))
-        if sma_st > sma_lt :
-            self.status = 'buy'
-            print('BUY PHASE')
-        elif sma_lt > sma_st:
-            self.status = 'sell'
-            print('SELL PHASE')
-        else:
-            self.status = 'wait'
-            print('GOLD CROSS IN COURSE')
+            # Get a list of all of our positions
+            if sma_st > sma_lt :
+                self.side = 'buy'
+                print('BUY PHASE')
+            elif sma_lt > sma_st:
+                self.side = 'sell'
+                print('SELL PHASE')
+            else:
+                self.side = 'wait'
+                print('GOLD CROSS IN COURSE')
+
+
+
+    def GX (self, stock = 'TSLA', time = 'day', short_obs = 40, long_obs = 60):
+        if type(stock) is str:
+            stock = [stock]
+        print(self.portfolio)
+        print(self.orders)
+        for ass in stock:
+            self.sma_v2(ass,time,short_obs,long_obs)
+            if self.side == 'buy':
+                pass
+
 
 
 # Print the quantity of shares for each position.
 #for position in portfolio:
-#    print("{} shares of {}".format(position.qty, position.symbol))
+#print("{} shares of {}".format(position.qty, position.symbol))
